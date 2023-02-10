@@ -20,6 +20,8 @@ class WorkQueue:
 
 
 class Worker(QtCore.QObject):
+    setProgressBarSignal = QtCore.pyqtSignal(tuple)
+
     def __init__(self, workQueue, number):
         super().__init__()
         self.number = number
@@ -31,7 +33,13 @@ class Worker(QtCore.QObject):
             if not self.workQueue.isEmpty():
                 time = self.workQueue.pop()
                 print("[no.{} Worker]: get time: {}".format(self.number, time))
-                sleep(time)
+                currentProgress = 0.0
+                while currentProgress <= 100.0:
+                    self.setProgressBarSignal.emit((self.number, currentProgress))
+                    currentProgress += 100.0 / (time * 10.0)
+                    sleep(0.1)
+                sleep(0.2)
+                self.setProgressBarSignal.emit((self.number, 0.0))
 
 
 class MainWindow(QtWidgets.QWidget):
@@ -84,14 +92,20 @@ class MainWindow(QtWidgets.QWidget):
         self.thirdWorkerProgressBar = QtWidgets.QProgressBar(self.centralWidget)
         self.thirdWorkerProgressBar.setGeometry(QtCore.QRect(100, 100, 160, 30))
         self.thirdWorkerProgressBar.setTextVisible(False)
-        # scoreLabel, QLabel
-        self.scoreLabel = QtWidgets.QLabel(self.centralWidget)
-        self.scoreLabel.setAlignment(QtCore.Qt.AlignCenter)
-        self.scoreLabel.setGeometry(QtCore.QRect(20, 165, 50, 30))
-        self.scoreLabel.setText("0")
 
     def addWorkButtonClicked(self):
         self.addWorkSignal.emit(random.randint(1, 10))  # To MainThread.addWork
+
+    @QtCore.pyqtSlot(tuple)
+    def setProgressBar(self, data):
+        number = data[0]
+        value = data[1]
+        if number == 1:
+            self.firstWorkerProgressBar.setValue(value)
+        elif number == 2:
+            self.secondWorkerProgressBar.setValue(value)
+        else:
+            self.thirdWorkerProgressBar.setValue(value)
 
 
 class MainThread(QtCore.QObject):
@@ -110,6 +124,7 @@ class MainThread(QtCore.QObject):
             self.workerList[i].moveToThread(self.workerThreadList[i])
             self.workerThreadList[i].start()
             self.doWorkSignal.connect(self.workerList[i].doWork)
+            self.workerList[i].setProgressBarSignal.connect(self.mainWindow.setProgressBar)
         self.mainWindow.show()
 
     def start(self):
